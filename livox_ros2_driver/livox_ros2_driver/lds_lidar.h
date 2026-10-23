@@ -27,6 +27,7 @@
 #ifndef LIVOX_ROS_DRIVER_LDS_LIDAR_H_
 #define LIVOX_ROS_DRIVER_LDS_LIDAR_H_
 
+#include <chrono>
 #include <memory>
 #include <mutex>
 #include <vector>
@@ -72,6 +73,12 @@ class LdsLidar : public Lds {
                                   void *clent_data);
   static void LidarErrorStatusCb(livox_status status, uint8_t handle,
                                  ErrorMessage *message);
+ public:
+  /** Status of the last point packet per handle: error code, timestamp type and when it arrived */
+  ErrorMessage last_error_[kMaxLidarCount] = {};
+  uint8_t last_timestamp_type_[kMaxLidarCount] = {};
+  std::chrono::steady_clock::time_point last_error_time_[kMaxLidarCount] = {};
+ private:
   static void ControlFanCb(livox_status status, uint8_t handle,
                            uint8_t response, void *clent_data);
   static void SetPointCloudReturnModeCb(livox_status status, uint8_t handle,

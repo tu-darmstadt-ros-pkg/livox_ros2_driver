@@ -42,6 +42,7 @@
 #include <thread>
 
 #include "rclcpp/rclcpp.hpp"
+#include "diagnostic_msgs/msg/diagnostic_array.hpp"
 
 #include "lddc.h"
 
@@ -58,11 +59,14 @@ public:
 
 private:
   void pollThread();
+  void publishDiagnostics();
 
   std::unique_ptr<Lddc> lddc_ptr_;
   std::shared_ptr<std::thread> poll_thread_;
   std::shared_future<void> future_;
   std::promise<void> exit_signal_;
+  rclcpp::Publisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr diagnostics_pub_;
+  rclcpp::TimerBase::SharedPtr diagnostics_timer_;
 };
 
 }  // namespace livox_ros

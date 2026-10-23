@@ -138,6 +138,12 @@ LivoxDriver::LivoxDriver(const rclcpp::NodeOptions & node_options)
     } else {
       RCLCPP_ERROR(this->get_logger(), "Init lds lidar fail!");
     }
+    // Optional: time sync status of each lidar on <namespace>/diagnostics, from the status in its point packets
+    if (this->declare_parameter("publish_diagnostics", false)) {
+      diagnostics_pub_ = this->create_publisher<diagnostic_msgs::msg::DiagnosticArray>("diagnostics", 10);
+      diagnostics_timer_ = this->create_wall_timer(std::chrono::seconds(1),
+                                                   std::bind(&LivoxDriver::publishDiagnostics, this));
+    }
   } else if (data_src == kSourceRawHub) {
     RCLCPP_INFO(this->get_logger(), "Data Source is hub.");
 
@@ -196,6 +202,61 @@ LivoxDriver::~LivoxDriver()
 {
   exit_signal_.set_value();
   poll_thread_->join();
+}
+
+void LivoxDriver::publishDiagnostics()
+{
+  using diagnostic_msgs::msg::DiagnosticStatus;
+  LdsLidar *lds = static_cast<LdsLidar *>(lddc_ptr_->lds_);
+  diagnostic_msgs::msg::DiagnosticArray msg;
+  msg.header.stamp = this->now();
+  auto now = std::chrono::steady_clock::now();
+  for (uint8_t i = 0; i < kMaxLidarCount; ++i) {
+    const LidarDevice &lidar = lds->lidars_[i];
+    if (lidar.info.broadcast_code[0] == '\0') {
+      continue;  // unused handle
+    }
+    DiagnosticStatus status;
+    status.name = std::string("livox_driver: ") + lidar.info.broadcast_code + " time sync";
+    status.hardware_id = lidar.info.broadcast_code;
+    double age = std::chrono::duration<double>(now - lds->last_error_time_[i]).count();
+    const LidarErrorCode &code = lds->last_error_[i].lidar_error_code;
+    const uint8_t timestamp_type = lds->last_timestamp_type_[i];
+    if (lidar.connect_state != kConnectStateSampling) {
+      status.level = DiagnosticStatus::ERROR;
+      status.message = "Lidar not sampling (disconnected?)";
+    } else if (age > 3.0) {
+      status.level = DiagnosticStatus::ERROR;
+      status.message = "No point packets from the lidar";
+    } else if (timestamp_type == kTimestampTypePpsGps) {
+      status.level = DiagnosticStatus::OK;
+      status.message = "GPS sync (PPS + UTC)";
+    } else if (timestamp_type == kTimestampTypePps) {
+      status.level = DiagnosticStatus::ERROR;
+      status.message = "PPS only, no UTC (timesync / GPRMC missing?)";
+    } else if (timestamp_type == kTimestampTypeNoSync) {
+      status.level = DiagnosticStatus::ERROR;
+      status.message = "No sync (PPS missing?)";
+    } else {
+      status.level = DiagnosticStatus::ERROR;
+      status.message = "Unexpected timestamp type " + std::to_string(timestamp_type);
+    }
+    diagnostic_msgs::msg::KeyValue kv;
+    kv.key = "timestamp_type";  // 0 no sync, 1 PTP, 3 GPS (PPS + UTC), 4 PPS
+    kv.value = std::to_string(timestamp_type);
+    status.values.push_back(kv);
+    kv.key = "time_sync_status";
+    kv.value = std::to_string(code.time_sync_status);
+    status.values.push_back(kv);
+    kv.key = "pps_status";  // 1: PPS signal OK
+    kv.value = std::to_string(code.device_status);
+    status.values.push_back(kv);
+    kv.key = "error_code";
+    kv.value = std::to_string(lds->last_error_[i].error_code);
+    status.values.push_back(kv);
+    msg.status.push_back(status);
+  }
+  diagnostics_pub_->publish(msg);
 }
 
 void LivoxDriver::pollThread()

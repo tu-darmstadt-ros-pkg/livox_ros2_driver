@@ -168,6 +168,11 @@ void LdsLidar::OnLidarDataCb(uint8_t handle, LivoxEthPacket *data,
     return;
   }
 
+  // Every packet carries the device status and its timestamp type (the 1 Hz error message is not sent by the Mid-70)
+  lds_lidar->last_error_[handle].error_code = eth_packet->err_code;
+  lds_lidar->last_timestamp_type_[handle] = eth_packet->timestamp_type;
+  lds_lidar->last_error_time_[handle] = std::chrono::steady_clock::now();
+
   lds_lidar->StorageRawPacket(handle, eth_packet);
 }
 
