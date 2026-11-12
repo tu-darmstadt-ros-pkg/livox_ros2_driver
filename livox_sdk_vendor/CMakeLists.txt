@@ -23,6 +23,7 @@ macro(build_livox_sdk)
       -Wno-deprecated
       -DCMAKE_INSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR}/livox-sdk_install
       -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+      -DCMAKE_POLICY_VERSION_MINIMUM=3.5
       "-DCMAKE_CXX_FLAGS=-Wno-error=c++20-compat"
       ${extra_cmake_args}
   )
